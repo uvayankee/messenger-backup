@@ -1,5 +1,6 @@
 package marshall.backup.messenger.webclient;
 
+import marshall.backup.messenger.Utils;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
@@ -10,7 +11,6 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
-import org.jdom2.input.SAXBuilder;
 
 import java.io.*;
 import java.util.ArrayList;
@@ -28,12 +28,13 @@ public class FacebookClient {
     private String email;
     private String pass;
     private String startParams;
-    private SAXBuilder saxBuilder;
     private Pattern prevUrlPattern = Pattern.compile("(/messages/read/[^\"]+last_message_timestamp[^\"]+)");
+    private Pattern imageUrlPattern = Pattern.compile("(/messages/attachment_preview[^\"]+)");
+    private Pattern gifUrlPattern = Pattern.compile("([^\"]+gif[^\"]+)");
+    private Pattern imageDownloadPattern = Pattern.compile("(href=\"https://scontent[^\"]+)");
 
     public FacebookClient(String email, String pass, String startParams) {
         this.httpClient = HttpClients.createDefault();
-        this.saxBuilder = new SAXBuilder();
         this.email = email;
         this.pass = pass;
         this.startParams = startParams;
@@ -45,6 +46,11 @@ public class FacebookClient {
         login();
         fetch(startParams, 0);
     }
+    public void finalize() throws Throwable {
+        httpClient.close();
+        super.finalize();
+    }
+
     private void login() {
         List<NameValuePair> postParameters = new ArrayList<NameValuePair>();
         postParameters.add(new BasicNameValuePair("email", email));
@@ -67,34 +73,76 @@ public class FacebookClient {
     private void fetch(String queryParams, int count) {
         count = count+1;
         String facebookMessages = "https://m.facebook.com/messages/read/";
-        HttpGet httpGet = new HttpGet(facebookMessages +"?"+queryParams);
+        HttpGet httpGet = new HttpGet(Utils.fixAmpersands(facebookMessages +"?"+queryParams));
         try {
             CloseableHttpResponse response = httpClient.execute(httpGet);
             String responseData = EntityUtils.toString(response.getEntity());
 
-            File output = new File("messages/messages"+count+".html");
-            output.createNewFile();
-            FileWriter fw = new FileWriter(output.getAbsoluteFile());
-            BufferedWriter bw = new BufferedWriter(fw);
-            bw.write(responseData);
-            bw.flush();
-            bw.close();
-
-            Matcher m = prevUrlPattern.matcher(responseData);
-            if(m.find()) {
-                fetch(m.group(0).split("\\?")[1].replace("&amp;", "&"),count);
+            saveString("messages/messages"+count+".html", responseData);
+            Matcher img = imageUrlPattern.matcher(responseData);
+            while(img.find()) {
+                fetchImagePreview(img.group(0).split("\\?")[1]);
             }
-            //Document doc = saxBuilder.build(response.getEntity().getContent());
-            //doc.getRootElement();
+
+            Matcher prev = prevUrlPattern.matcher(responseData);
+            if(prev.find()) {
+                fetch(prev.group(0).split("\\?")[1],count);
+            }
         } catch (IOException e) {
             e.printStackTrace();
-//        } catch (JDOMException e) {
-//            e.printStackTrace();
         }
     }
 
-    public void finalize() throws Throwable {
-        httpClient.close();
-        super.finalize();
+    private void fetchImagePreview(String queryParams) {
+        String facebookImagePreview = "https://m.facebook.com/messages/attachment_preview/";
+        HttpGet httpGet = new HttpGet(Utils.fixAmpersands(facebookImagePreview +"?"+queryParams));
+        try {
+            CloseableHttpResponse response = httpClient.execute(httpGet);
+            String responseData = EntityUtils.toString(response.getEntity());
+            Matcher m = imageDownloadPattern.matcher(responseData);
+            while(m.find()) {
+                String imageUrl = m.group(0).replace("href=\"","");
+                fetchImage(imageUrl);
+            }
+            Matcher gif = gifUrlPattern.matcher(responseData);
+            while (gif.find()) {
+                fetchImage(m.group(0));
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    private void fetchImage(String imageUrl) {
+        String[] paths = imageUrl.split("\\?")[0].split("/");
+        String fileName = paths[paths.length-1];
+        HttpGet httpGet = new HttpGet(Utils.fixAmpersands(imageUrl));
+        try {
+            CloseableHttpResponse response = httpClient.execute(httpGet);
+            byte[] imgBytes = EntityUtils.toByteArray(response.getEntity());
+            saveImage("messages/"+fileName, imgBytes);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    private void saveString(String fileName, String data) throws IOException {
+        File output = new File(fileName);
+        output.createNewFile();
+        FileWriter fw = new FileWriter(output.getAbsoluteFile());
+        BufferedWriter bw = new BufferedWriter(fw);
+        bw.write(data);
+        bw.flush();
+        bw.close();
+    }
+
+    private void saveImage(String fileName, byte[] data) throws IOException {
+        File output = new File(fileName);
+        FileOutputStream fos = new FileOutputStream(output.getAbsoluteFile());
+        fos.write(data);
+        fos.flush();
+        fos.close();
     }
 }
