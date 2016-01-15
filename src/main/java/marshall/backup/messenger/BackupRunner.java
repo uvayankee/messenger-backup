@@ -10,6 +10,8 @@ public class BackupRunner {
     public static void main(String[] args) {
 
         if(args.length != 4) {
+            FacebookClient fbc = new FacebookClient("","","");
+            fbc.testFile();
             System.err.println("Params: username, password, messageIdQueryParam");
         } else {
             FacebookClient fbc = new FacebookClient(args[1], args[2], args[3]);
@@ -17,4 +19,6 @@ public class BackupRunner {
         }
 
     }
+
+
 }

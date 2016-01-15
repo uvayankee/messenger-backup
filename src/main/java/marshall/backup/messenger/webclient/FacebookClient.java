@@ -11,10 +11,16 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
+import org.dom4j.*;
+import org.dom4j.io.SAXReader;
+import org.jaxen.FunctionContext;
+import org.jaxen.NamespaceContext;
+import org.jaxen.VariableContext;
 
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -77,6 +83,10 @@ public class FacebookClient {
         try {
             CloseableHttpResponse response = httpClient.execute(httpGet);
             String responseData = EntityUtils.toString(response.getEntity());
+            responseData = responseData.replace("<!DOCTYPE html>","<?xml version=\"1.0\"?>");
+            responseData = responseData.replaceAll("<head[^<]+</head>", "");
+            responseData = responseData.replaceAll("<script[^<]+</script>", "");
+            responseData = responseData.replaceAll("&nbsp;","&#160;");
 
             saveString("messages/messages"+count+".html", responseData);
             Matcher img = imageUrlPattern.matcher(responseData);
@@ -144,5 +154,30 @@ public class FacebookClient {
         fos.write(data);
         fos.flush();
         fos.close();
+    }
+
+    public void testFile() {
+        try {
+            long startDt = System.currentTimeMillis();
+            File message_test = new File("message-test.html");
+            SAXReader reader = new SAXReader();
+            Document document = reader.read(message_test);
+            long parseDt = System.currentTimeMillis();
+            System.out.println(parseDt-startDt);
+            List<Node> messages = document.selectNodes("//div[@id='root']//div[@class='voice acw abt']");
+            System.out.println(messages.size());
+            for(Node message : messages) {
+                System.out.println(message.getStringValue());
+            }
+            long endDt = System.currentTimeMillis();
+            System.out.println(endDt - startDt);
+            System.out.println(document.getXMLEncoding());
+        } catch (DocumentException e) {
+            e.printStackTrace();
+        }
+
+        //Deleted head
+        //Deleted <script[^<]+</script>
+        //Replaced &nbsp; with &#160;
     }
 }
