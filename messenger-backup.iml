@@ -38,5 +38,6 @@
     <orderEntry type="library" name="Gradle: javax.xml.stream:stax-api:1.0-2" level="project" />
     <orderEntry type="library" name="Gradle: javax.xml.bind:jaxb-api:2.2.12" level="project" />
     <orderEntry type="library" name="Gradle: relaxngDatatype:relaxngDatatype:20020414" level="project" />
+    <orderEntry type="library" name="Gradle: com.google.code.gson:gson:2.5" level="project" />
   </component>
 </module>
