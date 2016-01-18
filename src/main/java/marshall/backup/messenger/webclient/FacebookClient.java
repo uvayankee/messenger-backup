@@ -63,7 +63,7 @@ public class FacebookClient {
 
     public void start() {
         dir = new File("messages/"+dirName);
-        dir.mkdir();
+        makeDir(dir);
         login();
         fetch(startParams, 0);
         write();
@@ -207,7 +207,7 @@ public class FacebookClient {
 
     private void saveString(String fileName, String data) throws IOException {
         File output = new File(fileName);
-        output.createNewFile();
+        touch(output);
         FileWriter fw = new FileWriter(output.getAbsoluteFile());
         BufferedWriter bw = new BufferedWriter(fw);
         bw.write(data);
@@ -217,21 +217,22 @@ public class FacebookClient {
 
     private void saveImage(String fileName, byte[] data) throws IOException {
         File output = new File(fileName);
-        output.getParentFile().mkdir();
-        output.createNewFile();
+        makeDir(output.getParentFile());
+        touch(output);
         FileOutputStream fos = new FileOutputStream(output.getAbsoluteFile());
         fos.write(data);
         fos.flush();
         fos.close();
     }
 
+    @SuppressWarnings("StringConcatenationInsideStringBufferAppend")
     private void write() {
         log("Starting Data Write");
         while(messages.size() > 0) {
             Map.Entry<Integer,TreeMap<Integer,TreeMap<Date,FileData>>> e = messages.pollFirstEntry();
             String yearPath = dir.getAbsolutePath() + "/" + e.getKey();
             File year = new File(yearPath);
-            year.mkdir();
+            makeDir(year);
             log("Starting year " + e.getKey());
             TreeMap<Integer,TreeMap<Date, FileData>> monthMap = e.getValue();
             while(monthMap.size() > 0) {
@@ -242,9 +243,9 @@ public class FacebookClient {
                 log("Starting month " + me.getKey());
                 while (messageMap.size() > 0) {
                     FileData message = messageMap.pollFirstEntry().getValue();
-                    fileContents.append("<h1>"+message.getSender()+"</h1>");
-                    fileContents.append("<h2>"+message.getSendDate()+"</h2>");
-                    fileContents.append("<div>"+message.getMessage()+"</div>");
+                    fileContents.append("<h1>"+message.getSender()+"</h1>"+
+                            "<h2>"+message.getSendDate()+"</h2>"+
+                            "<div>"+message.getMessage()+"</div>");
                     if(message.hasAttachedImage()) {
                         fileContents.append("<div>Images<ul>");
                         for (String img : message.getAttachedImages()) {
@@ -292,5 +293,19 @@ public class FacebookClient {
 
     private void log(String message) {
         System.out.println(message);
+    }
+
+    private void makeDir(File directory) {
+        if(!directory.mkdir()) {
+            System.err.println("Unable to make directory: " + directory.getAbsolutePath());
+            throw new IllegalStateException("Unable to make directory: " + directory.getAbsolutePath());
+        }
+    }
+
+    private void touch(File file) throws IOException {
+        if(!file.createNewFile()) {
+            System.err.println("Unable to make file: " + file.getAbsolutePath());
+            throw new IllegalStateException("Unable to make file: " + file.getAbsolutePath());
+        }
     }
 }
