@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import marshall.backup.messenger.Utils;
 import marshall.backup.messenger.model.DataStore;
 import marshall.backup.messenger.model.FileData;
+import marshall.backup.messenger.model.ImageData;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
@@ -41,13 +42,13 @@ public class FacebookClient {
     private Pattern prevUrlPattern = Pattern.compile("(/messages/read/[^\"]+last_message_timestamp[^\"]+)");
     private Pattern imageUrlPattern = Pattern.compile("(/messages/attachment_preview[^\"]+)");
     private Pattern gifUrlPattern = Pattern.compile("([^\"]+gif[^\"]+)");
+    private Pattern pngUrlPattern = Pattern.compile("([^\"]+png[^\"]+)");
     private Pattern imageDownloadPattern = Pattern.compile("(href=\"https://scontent[^\"]+)");
 
     private File dir;
     private SAXReader reader;
     private Gson gson;
     private NavigableMap<Integer,TreeMap<Integer,TreeMap<Date, FileData>>> messages;
-    private Map<String, String> imageDirMapping;
 
     public FacebookClient(String email, String pass, String startParams, String dirName) {
         this.httpClient = HttpClients.createDefault();
@@ -58,7 +59,6 @@ public class FacebookClient {
         reader = new SAXReader();
         gson = new Gson();
         messages = new TreeMap<Integer,TreeMap<Integer,TreeMap<Date, FileData>>>();
-        imageDirMapping = new HashMap<String, String>();
     }
 
     public void start() {
@@ -113,7 +113,7 @@ public class FacebookClient {
             processMessages(responseData);
             log("Completed " + count + " processing. Currently at "
                     + messages.firstEntry().getValue().firstEntry().getValue().firstEntry().getKey());
-            saveString(dir.getAbsolutePath()+"/messages"+count+".html", responseData);
+            //saveString(dir.getAbsolutePath()+"/messages"+count+".html", responseData);
             Matcher img = imageUrlPattern.matcher(responseData);
             while(img.find()) {
                 fetchImagePreview(img.group(0).split("\\?")[1]);
@@ -146,8 +146,15 @@ public class FacebookClient {
                     List<Node> images = messageText.selectNodes("descendant::img");
                     for(Node image : images) {
                         Element eImage = (Element)image;
-                        String[] imagePaths = eImage.attributeValue("src").split("\\?")[0].split("/");
-                        fd.addAttachedImage(imagePaths[imagePaths.length - 1]);
+                        String href = eImage.getParent().attributeValue("href");
+                        ImageData img;
+                        if(href != null) {
+                             img = fetchImagePreview(href.split("\\?")[1]);
+                        }
+                        else {
+                            img = fetchImage(eImage.attributeValue("src"));
+                        }
+                        fd.addAttachedImage(img);
                     }
                 }
                 Calendar cal = Calendar.getInstance();
@@ -161,16 +168,13 @@ public class FacebookClient {
                     messages.get(year).put(month, new TreeMap<Date, FileData>());
                 }
                 messages.get(year).get(month).put(fd.getSendDate(),fd);
-                for(String imagePath : fd.getAttachedImages()) {
-                    imageDirMapping.put(imagePath,Integer.toString(year));
-                }
             }
         } catch (DocumentException e) {
             e.printStackTrace();
         }
     }
 
-    private void fetchImagePreview(String queryParams) {
+    private ImageData fetchImagePreview(String queryParams) {
         String facebookImagePreview = "https://m.facebook.com/messages/attachment_preview/";
         HttpGet httpGet = new HttpGet(Utils.fixAmpersands(facebookImagePreview +"?"+queryParams));
         try {
@@ -179,29 +183,38 @@ public class FacebookClient {
             Matcher m = imageDownloadPattern.matcher(responseData);
             while(m.find()) {
                 String imageUrl = m.group(0).replace("href=\"","");
-                fetchImage(imageUrl);
+                return fetchImage(imageUrl);
             }
             Matcher gif = gifUrlPattern.matcher(responseData);
             while (gif.find()) {
-                fetchImage(gif.group(0));
+                return fetchImage(gif.group(0));
+            }
+            Matcher png = pngUrlPattern.matcher(responseData);
+            while (png.find()) {
+                return fetchImage(png.group(0));
             }
         } catch (IOException e) {
             e.printStackTrace();
+            throw new IllegalStateException("Unable to process image found in preview");
         }
-
+        throw new IllegalStateException("No image found in preview");
     }
 
-    private void fetchImage(String imageUrl) {
+    private ImageData fetchImage(String imageUrl) {
+        ImageData img = new ImageData();
         String[] paths = imageUrl.split("\\?")[0].split("/");
         String fileName = paths[paths.length-1];
+        img.setFullFileName(fileName);
         HttpGet httpGet = new HttpGet(Utils.fixAmpersands(imageUrl));
         try {
             CloseableHttpResponse response = httpClient.execute(httpGet);
             byte[] imgBytes = EntityUtils.toByteArray(response.getEntity());
-            saveImage(dir.getAbsolutePath()+"/"+imageDirMapping.get(fileName)+"/"+fileName, imgBytes);
+            img.setImage(imgBytes);
+            //saveImage(dir.getAbsolutePath()+"/"+imageDirMapping.get(fileName)+"/"+fileName, imgBytes);
         } catch (IOException e) {
             e.printStackTrace();
         }
+        return img;
     }
 
 
@@ -248,8 +261,13 @@ public class FacebookClient {
                             "<div>"+message.getMessage()+"</div>");
                     if(message.hasAttachedImage()) {
                         fileContents.append("<div>Images<ul>");
-                        for (String img : message.getAttachedImages()) {
-                            fileContents.append("<li><img src=\""+img+"\"/></li>");
+                        for (ImageData img : message.getAttachedImages()) {
+                            fileContents.append("<li><img src=\""+img.getFullFileName()+"\"/></li>");
+                            try {
+                                saveImage(year.getAbsolutePath()+"/"+img.getFullFileName(), img.getImage());
+                            } catch (IOException e1) {
+                                e1.printStackTrace();
+                            }
                         }
                         fileContents.append("</ul><div>");
                     }
@@ -297,15 +315,19 @@ public class FacebookClient {
 
     private void makeDir(File directory) {
         if(!directory.mkdir()) {
-            System.err.println("Unable to make directory: " + directory.getAbsolutePath());
-            throw new IllegalStateException("Unable to make directory: " + directory.getAbsolutePath());
+            if(!directory.exists()) {
+                System.err.println("Unable to make directory: " + directory.getAbsolutePath());
+                throw new IllegalStateException("Unable to make directory: " + directory.getAbsolutePath());
+            }
         }
     }
 
     private void touch(File file) throws IOException {
         if(!file.createNewFile()) {
-            System.err.println("Unable to make file: " + file.getAbsolutePath());
-            throw new IllegalStateException("Unable to make file: " + file.getAbsolutePath());
+            if (!file.exists()) {
+                System.err.println("Unable to make file: " + file.getAbsolutePath());
+                throw new IllegalStateException("Unable to make file: " + file.getAbsolutePath());
+            }
         }
     }
 }

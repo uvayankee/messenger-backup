@@ -11,10 +11,10 @@ public class FileData implements Comparable<FileData> {
     private Date sendDate;
     private String message;
     private String Sender;
-    private List<String> attachedImages;
+    private List<ImageData> attachedImages;
 
     public FileData() {
-        attachedImages = new ArrayList<String>();
+        attachedImages = new ArrayList<ImageData>();
     }
 
     @Override
@@ -50,11 +50,11 @@ public class FileData implements Comparable<FileData> {
         return !attachedImages.isEmpty();
     }
 
-    public void addAttachedImage(String imageFileName) {
+    public void addAttachedImage(ImageData imageFileName) {
         attachedImages.add(imageFileName);
     }
 
-    public List<String> getAttachedImages() {
+    public List<ImageData> getAttachedImages() {
         return attachedImages;
     }
 }
