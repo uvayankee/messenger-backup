@@ -141,22 +141,38 @@ public class FacebookClient {
                 Element messageText = (Element)e.selectSingleNode("descendant::div[@data-sigil='message-text']");
                 DataStore messageData = gson.fromJson(messageText.attributeValue("data-store"), DataStore.class);
                 fd.setSendDate(messageData.getTimestamp());
-                fd.setMessage(messageText.getStringValue());
                 if(hasAttachments) {
-                    List<Node> images = messageText.selectNodes("descendant::img");
+                    List<Node> imgLinks = messageText.selectNodes("descendant::a[contains(@href,'attachment_preview')]");
+                    for(Node link : imgLinks) {
+                        Element eLink = (Element)link;
+                        String href = eLink.attributeValue("href");
+                        if(href != null &&href.contains("attachment_preview")) {
+                            ImageData img = fetchImagePreview(href.split("\\?")[1]);
+                            fd.addAttachedImage(img);
+                        }
+                    }
+                    List<Node> images = messageText.selectNodes("descendant::img[not(ancestor::a)]");
                     for(Node image : images) {
                         Element eImage = (Element)image;
-                        String href = eImage.getParent().attributeValue("href");
-                        ImageData img;
-                        if(href != null) {
-                             img = fetchImagePreview(href.split("\\?")[1]);
-                        }
-                        else {
-                            img = fetchImage(eImage.attributeValue("src"));
-                        }
+                        ImageData img = fetchImage(eImage.attributeValue("src"));
                         fd.addAttachedImage(img);
                     }
+
                 }
+                List<Node> attachments = messageText.selectNodes("descendant::div[@class='messageAttachments']");
+                for (Node attachment : attachments) {
+                    attachment.detach();
+                }
+                List<Node> links = messageText.selectNodes("descendant::a");
+                for (Node link : links) {
+                    Element eLink = (Element)link;
+                    String linkText = eLink.getStringValue();
+
+                }
+                StringWriter sw = new StringWriter();
+                messageText.write(sw);
+                fd.setMessage(sw.toString());
+
                 Calendar cal = Calendar.getInstance();
                 cal.setTime(fd.getSendDate());
                 int year = cal.get(Calendar.YEAR);
@@ -171,6 +187,8 @@ public class FacebookClient {
             }
         } catch (DocumentException e) {
             e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
@@ -181,16 +199,16 @@ public class FacebookClient {
             CloseableHttpResponse response = httpClient.execute(httpGet);
             String responseData = EntityUtils.toString(response.getEntity());
             Matcher m = imageDownloadPattern.matcher(responseData);
-            while(m.find()) {
+            if (m.find()) {
                 String imageUrl = m.group(0).replace("href=\"","");
                 return fetchImage(imageUrl);
             }
             Matcher gif = gifUrlPattern.matcher(responseData);
-            while (gif.find()) {
+            if (gif.find()) {
                 return fetchImage(gif.group(0));
             }
             Matcher png = pngUrlPattern.matcher(responseData);
-            while (png.find()) {
+            if (png.find()) {
                 return fetchImage(png.group(0));
             }
         } catch (IOException e) {
@@ -210,7 +228,6 @@ public class FacebookClient {
             CloseableHttpResponse response = httpClient.execute(httpGet);
             byte[] imgBytes = EntityUtils.toByteArray(response.getEntity());
             img.setImage(imgBytes);
-            //saveImage(dir.getAbsolutePath()+"/"+imageDirMapping.get(fileName)+"/"+fileName, imgBytes);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -260,16 +277,22 @@ public class FacebookClient {
                             "<h2>"+message.getSendDate()+"</h2>"+
                             "<div>"+message.getMessage()+"</div>");
                     if(message.hasAttachedImage()) {
-                        fileContents.append("<div>Images<ul>");
+                        fileContents.append("<table><caption>Images</caption><tr>");
+                        int imgCount = 0;
                         for (ImageData img : message.getAttachedImages()) {
-                            fileContents.append("<li><img src=\""+img.getFullFileName()+"\"/></li>");
+                            imgCount++;
+                            if(imgCount > 1 && imgCount % 3 == 1) {
+                                fileContents.append("</tr><tr>");
+                            }
+                            fileContents.append("<td><a href=\""+img.getFullFileName()+
+                                    "\"><img width=\"300\" src=\""+img.getFullFileName()+"\"/></a></td>");
                             try {
                                 saveImage(year.getAbsolutePath()+"/"+img.getFullFileName(), img.getImage());
                             } catch (IOException e1) {
                                 e1.printStackTrace();
                             }
                         }
-                        fileContents.append("</ul><div>");
+                        fileContents.append("</tr></table>");
                     }
                 }
                 log("Finished month " + me.getKey());
