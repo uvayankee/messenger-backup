@@ -63,7 +63,6 @@ public class FacebookClient {
 
     public void start() {
         dir = new File("messages/"+dirName);
-        makeDir(dir);
         login();
         fetch(startParams, 0);
         write();
@@ -258,6 +257,7 @@ public class FacebookClient {
     @SuppressWarnings("StringConcatenationInsideStringBufferAppend")
     private void write() {
         log("Starting Data Write");
+        makeDir(dir);
         while(messages.size() > 0) {
             Map.Entry<Integer,TreeMap<Integer,TreeMap<Date,FileData>>> e = messages.pollFirstEntry();
             String yearPath = dir.getAbsolutePath() + "/" + e.getKey();
