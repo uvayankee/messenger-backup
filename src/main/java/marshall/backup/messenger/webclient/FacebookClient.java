@@ -307,31 +307,6 @@ public class FacebookClient {
         }
     }
 
-    public void testFile() {
-        try {
-            long startDt = System.currentTimeMillis();
-            File message_test = new File("message-test.html");
-            SAXReader reader = new SAXReader();
-            Document document = reader.read(message_test);
-            long parseDt = System.currentTimeMillis();
-            System.out.println(parseDt-startDt);
-            List<Node> messages = document.selectNodes("//div[@id='root']//div[@class='voice acw abt']");
-            System.out.println(messages.size());
-            for(Node message : messages) {
-                System.out.println(message.getStringValue());
-            }
-            long endDt = System.currentTimeMillis();
-            System.out.println(endDt - startDt);
-            System.out.println(document.getXMLEncoding());
-        } catch (DocumentException e) {
-            e.printStackTrace();
-        }
-
-        //Deleted head
-        //Deleted <script[^<]+</script>
-        //Replaced &nbsp; with &#160;
-    }
-
     private void log(String message) {
         System.out.println(message);
     }
